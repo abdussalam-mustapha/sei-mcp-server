@@ -36,6 +36,13 @@ const erc20Abi = [
     outputs: [{ type: 'uint256' }],
     stateMutability: 'view',
     type: 'function'
+  },
+  {
+    inputs: [{ name: 'account', type: 'address' }],
+    name: 'balanceOf',
+    outputs: [{ type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function'
   }
 ] as const;
 
@@ -74,6 +81,42 @@ const erc1155Abi = [
     type: 'function'
   }
 ] as const;
+
+/**
+ * Get ERC20 token balance for an address
+ */
+export async function getERC20Balance(
+  tokenAddress: Address,
+  holderAddress: Address,
+  network: string = 'sei'
+): Promise<{
+  balance: bigint;
+  formatted: string;
+  decimals: number;
+}> {
+  try {
+    const client = getPublicClient(network);
+    const contract = getContract({
+      address: tokenAddress,
+      abi: erc20Abi,
+      client
+    });
+
+    const [balance, decimals] = await Promise.all([
+      contract.read.balanceOf([holderAddress]),
+      contract.read.decimals()
+    ]);
+
+    return {
+      balance,
+      formatted: formatUnits(balance, decimals),
+      decimals
+    };
+  } catch (error) {
+    console.error(`[TOKENS] Failed to get ERC20 balance for ${tokenAddress}:`, error);
+    throw error;
+  }
+}
 
 /**
  * Get ERC20 token information
