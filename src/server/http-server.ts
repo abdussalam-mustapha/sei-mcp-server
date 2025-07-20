@@ -14,16 +14,42 @@ console.error(`Configured to listen on ${HOST}:${PORT}`);
 // Setup Express
 const app = express();
 app.use(express.json());
+// Enhanced CORS configuration for production
 app.use(cors({
-  origin: '*',
-  methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Session-ID'],
-  credentials: true,
-  exposedHeaders: ['Content-Type', 'Access-Control-Allow-Origin']
+  origin: true, // Allow all origins
+  methods: ['GET', 'POST', 'OPTIONS', 'PUT', 'DELETE'],
+  allowedHeaders: [
+    'Content-Type', 
+    'Authorization', 
+    'X-Session-ID',
+    'Accept',
+    'Origin',
+    'X-Requested-With',
+    'Access-Control-Request-Method',
+    'Access-Control-Request-Headers'
+  ],
+  credentials: false, // Set to false when allowing all origins
+  exposedHeaders: ['Content-Type', 'X-Session-ID'],
+  preflightContinue: false,
+  optionsSuccessStatus: 200
 }));
 
-// Add OPTIONS handling for preflight requests
-app.options('*', cors());
+// Enhanced OPTIONS handling for preflight requests
+app.options('*', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Session-ID, Accept, Origin, X-Requested-With');
+  res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
+  res.status(200).end();
+});
+
+// Global middleware to ensure all responses have CORS headers
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Session-ID, Accept, Origin, X-Requested-With');
+  next();
+});
 
 // Keep track of active connections with session IDs
 const connections = new Map<string, SSEServerTransport>();
@@ -42,9 +68,7 @@ startServer().then(s => {
 app.post("/api/mcp", async (req: Request, res: Response): Promise<void> => {
   console.error(`Received JSON-RPC request to /api/mcp: ${JSON.stringify(req.body)}`);
   
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  // CORS headers are now handled by global middleware
   
   if (!server) {
     console.error("Server not initialized yet");
@@ -297,9 +321,7 @@ app.post("/api/mcp", async (req: Request, res: Response): Promise<void> => {
 
 // Health check endpoint for MCP client compatibility
 app.get("/health", (req: Request, res: Response): void => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  // CORS headers are now handled by global middleware
   
   const healthStatus = {
     status: 'healthy',
@@ -325,10 +347,7 @@ app.get("/sse", (req: Request, res: Response) => {
   console.error(`Received SSE connection request from ${req.ip}`);
   console.error(`Query parameters: ${JSON.stringify(req.query)}`);
   
-  // Set CORS headers explicitly
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Session-ID');
+  // CORS headers are now handled by global middleware
   
   if (!server) {
     console.error("Server not initialized yet, rejecting SSE connection");
@@ -398,10 +417,7 @@ app.post("/messages", (req: Request, res: Response) => {
   console.error(`Received message for sessionId ${sessionId}`);
   console.error(`Message body: ${JSON.stringify(req.body)}`);
   
-  // Set CORS headers
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  // CORS headers are now handled by global middleware
   
   if (!server) {
     console.error("Server not initialized yet");
@@ -434,15 +450,7 @@ app.post("/messages", (req: Request, res: Response) => {
   }
 });
 
-// Add a simple health check endpoint
-app.get("/health", (req: Request, res: Response) => {
-  res.status(200).json({ 
-    status: "ok",
-    server: server ? "initialized" : "initializing",
-    activeConnections: connections.size,
-    connectedSessionIds: Array.from(connections.keys())
-  });
-});
+// Duplicate health endpoint removed - using the more comprehensive one above
 
 // Add a root endpoint for basic info
 app.get("/", (req: Request, res: Response) => {
