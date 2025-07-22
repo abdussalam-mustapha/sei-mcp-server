@@ -163,6 +163,85 @@ app.get("/health", (req: Request, res: Response) => {
   });
 });
 
+// Add MCP API endpoint for direct MCP requests
+// @ts-ignore
+app.post("/api/mcp", async (req: Request, res: Response) => {
+  console.error(`Received MCP API request from ${req.ip}`);
+  console.error(`Request body: ${JSON.stringify(req.body)}`);
+  
+  // Set CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Session-ID');
+  
+  if (!server) {
+    console.error("Server not initialized yet");
+    return res.status(503).json({ 
+      jsonrpc: '2.0',
+      id: req.body?.id || null,
+      error: { code: -32000, message: "Server not initialized" }
+    });
+  }
+  
+  try {
+    const { jsonrpc, id, method, params } = req.body;
+    
+    if (jsonrpc !== '2.0') {
+      return res.status(400).json({
+        jsonrpc: '2.0',
+        id: id || null,
+        error: { code: -32600, message: "Invalid JSON-RPC version" }
+      });
+    }
+    
+    if (!method) {
+      return res.status(400).json({
+        jsonrpc: '2.0',
+        id: id || null,
+        error: { code: -32600, message: "Missing method" }
+      });
+    }
+    
+    console.error(`Processing MCP method: ${method}`);
+    
+    // For now, return a simple response indicating the method was received
+    // TODO: Implement proper MCP method handling
+    let result;
+    
+    switch (method) {
+      case 'get_supported_networks':
+        result = ['evm', 'native'];
+        break;
+      case 'get_balance':
+        result = { amount: '0', denom: 'sei', formatted: '0 SEI' };
+        break;
+      default:
+        result = { message: `Method ${method} received but not yet implemented` };
+    }
+    
+    const response = {
+      jsonrpc: '2.0',
+      id,
+      result
+    };
+    
+    console.error(`MCP response: ${JSON.stringify(response)}`);
+    res.json(response);
+    
+  } catch (error) {
+    console.error(`Error processing MCP request: ${error}`);
+    res.status(500).json({
+      jsonrpc: '2.0',
+      id: req.body?.id || null,
+      error: { 
+        code: -32603, 
+        message: "Internal error",
+        data: error instanceof Error ? error.message : 'Unknown error'
+      }
+    });
+  }
+});
+
 // Add a root endpoint for basic info
 app.get("/", (req: Request, res: Response) => {
   res.status(200).json({
@@ -171,7 +250,8 @@ app.get("/", (req: Request, res: Response) => {
     endpoints: {
       sse: "/sse",
       messages: "/messages",
-      health: "/health"
+      health: "/health",
+      api: "/api/mcp"
     },
     status: server ? "ready" : "initializing",
     activeConnections: connections.size
