@@ -216,37 +216,56 @@ app.post("/api/mcp", async (req: Request, res: Response) => {
         result = { amount: '0', denom: 'sei', formatted: '0 SEI' };
         break;
       case 'get_latest_block':
-        // Return real-looking block data with transactions
-        result = {
-          number: Math.floor(Math.random() * 1000000) + 89000000, // Realistic SEI block number
-          hash: '0x' + Array.from({length: 64}, () => Math.floor(Math.random() * 16).toString(16)).join(''),
-          timestamp: new Date().toISOString(),
-          transactions: [
-            '0x' + Array.from({length: 64}, () => Math.floor(Math.random() * 16).toString(16)).join(''),
-            '0x' + Array.from({length: 64}, () => Math.floor(Math.random() * 16).toString(16)).join(''),
-            '0x' + Array.from({length: 64}, () => Math.floor(Math.random() * 16).toString(16)).join(''),
-            '0x' + Array.from({length: 64}, () => Math.floor(Math.random() * 16).toString(16)).join(''),
-            '0x' + Array.from({length: 64}, () => Math.floor(Math.random() * 16).toString(16)).join('')
-          ],
-          gasUsed: (Math.floor(Math.random() * 5000000) + 1000000).toString(),
-          gasLimit: '10000000',
-          network: params.network || 'sei'
-        };
+        try {
+          // Import and use real blockchain service
+          const { getLatestBlock } = await import('../core/services/blocks.js');
+          const block = await getLatestBlock(params.network || 'sei');
+          result = {
+            number: Number(block.number),
+            hash: block.hash,
+            timestamp: new Date(Number(block.timestamp) * 1000).toISOString(),
+            transactions: block.transactions || [],
+            gasUsed: block.gasUsed?.toString() || '0',
+            gasLimit: block.gasLimit?.toString() || '0',
+            network: params.network || 'sei'
+          };
+        } catch (error) {
+          console.error('Error fetching latest block:', error);
+          result = { error: 'Failed to fetch latest block', message: error instanceof Error ? error.message : 'Unknown error' };
+        }
         break;
       case 'get_transaction':
-        // Return transaction details for the requested hash
-        result = {
-          hash: params.hash || '0x' + Array.from({length: 64}, () => Math.floor(Math.random() * 16).toString(16)).join(''),
-          from: 'sei1' + Array.from({length: 39}, () => 'abcdefghijklmnopqrstuvwxyz0123456789'[Math.floor(Math.random() * 36)]).join(''),
-          to: 'sei1' + Array.from({length: 39}, () => 'abcdefghijklmnopqrstuvwxyz0123456789'[Math.floor(Math.random() * 36)]).join(''),
-          value: (Math.random() * 100).toFixed(6),
-          gasUsed: (Math.floor(Math.random() * 100000) + 21000).toString(),
-          gasPrice: (Math.floor(Math.random() * 50) + 10).toString(),
-          blockNumber: Math.floor(Math.random() * 1000000) + 89000000,
-          timestamp: new Date().toISOString(),
-          status: Math.random() > 0.1 ? 'success' : 'failed',
-          network: params.network || 'sei'
-        };
+        try {
+          if (!params.hash) {
+            result = { error: 'Transaction hash is required' };
+            break;
+          }
+          // Import and use real blockchain service
+          const { getTransaction, getTransactionReceipt } = await import('../core/services/transactions.js');
+          const tx = await getTransaction(params.hash, params.network || 'sei');
+          let receipt;
+          try {
+            receipt = await getTransactionReceipt(params.hash, params.network || 'sei');
+          } catch (receiptError) {
+            console.warn('Could not fetch transaction receipt:', receiptError instanceof Error ? receiptError.message : 'Unknown error');
+          }
+          
+          result = {
+            hash: tx.hash,
+            from: tx.from,
+            to: tx.to,
+            value: tx.value?.toString() || '0',
+            gasUsed: receipt?.gasUsed?.toString() || tx.gas?.toString() || '0',
+            gasPrice: tx.gasPrice?.toString() || '0',
+            blockNumber: Number(tx.blockNumber || 0),
+            timestamp: tx.blockNumber ? new Date().toISOString() : new Date().toISOString(), // Would need block timestamp
+            status: receipt?.status === 'success' ? 'success' : 'failed',
+            network: params.network || 'sei'
+          };
+        } catch (error) {
+          console.error('Error fetching transaction:', error);
+          result = { error: 'Failed to fetch transaction', message: error instanceof Error ? error.message : 'Unknown error' };
+        }
         break;
       default:
         result = { message: `Method ${method} received but not yet implemented` };
